@@ -1,5 +1,15 @@
 module bible_app
 
-go 1.21
+go 1.23.0
 
-require github.com/mattn/go-sqlite3 v1.14.28
+toolchain go1.24.4
+
+require (
+	github.com/PuerkitoBio/goquery v1.10.3
+	github.com/mattn/go-sqlite3 v1.14.28
+)
+
+require (
+	github.com/andybalholm/cascadia v1.3.3 // indirect
+	golang.org/x/net v0.39.0 // indirect
+)

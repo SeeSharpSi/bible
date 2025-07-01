@@ -368,11 +368,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /**
-   * Shows a link to the Strong's concordance definition on Blue Letter Bible.
-   * A direct API integration is not possible without a public API key from
-   * Blue Letter Bible or a server-side component to handle web scraping.
-   * This implementation constructs a search URL that takes the user directly
-   * to the relevant information on the BLB website.
+   * Fetches and displays a Strong's definition by calling the local backend,
+   * which in turn scrapes the Blue Letter Bible website.
    * @param {HTMLElement} wordElement The clicked word span element.
    */
   async function showWordDefinition(wordElement) {
@@ -381,19 +378,20 @@ document.addEventListener("DOMContentLoaded", () => {
       .replace(/[.,;:"'?!()]$/g, "");
     if (!wordText) return;
 
-    const { translation } = currentState;
-
     document.getElementById("original-word").textContent =
       `Looking up "${wordText}"...`;
-    document.getElementById("word-definition").innerHTML = "";
+    document.getElementById("word-definition").innerHTML =
+      "<p>Please wait...</p>";
     wordModal.style.display = "flex";
 
     try {
-      // Step 1: Find verse context from the element's parent
+      // Step 1: Get context from the DOM and current state
+      const { translation } = currentState;
       const verseEl = wordElement.closest(".verse");
       if (!verseEl) {
         throw new Error("Could not identify the verse context for the word.");
       }
+
       const [_, bookId, chapter, verse] = verseEl.id.split("-");
       const book = currentState.books.find((b) => b.bookid == bookId);
       if (!book) {
@@ -401,30 +399,46 @@ document.addEventListener("DOMContentLoaded", () => {
           "Could not resolve book information from current state.",
         );
       }
+      const bookName = book.name;
 
-      // Step 2: Construct a search URL for Blue Letter Bible.
-      // This approach creates a URL to the interlinear view for the specific verse.
-      // Note: BLB book names can be specific (e.g., 'Jhn' for John). The book name
-      // from the bolls.life API might need mapping for best results.
-      const bookAbbr = book.name.replace(/\s/g, "+"); // e.g. "1 Samuel" -> "1+Samuel"
-      const verseRef = `${bookAbbr}+${chapter}:${verse}`;
-      const searchUrl = `${BLB_URL}/search/preSearch.cfm?Criteria=${encodeURIComponent(wordText)}&t=${translation}&ss=1&source=from_interlinear&fromverse=${verseRef}`;
+      // Step 2: Call the new backend endpoint
+      const params = new URLSearchParams({
+        word: wordText,
+        translation: translation,
+        bookName: bookName,
+        chapter: chapter,
+        verse: verse,
+      });
 
-      // Step 3: Display a helpful message and a link in the modal.
+      const response = await fetch(
+        `/api/strongs_definition?${params.toString()}`,
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to get definition: ${errorText} (Status: ${response.status})`,
+        );
+      }
+
+      const data = await response.json();
+
+      // Step 3: Display the fetched data in the modal
       document.getElementById("original-word").textContent =
-        `Definition for "${wordText}"`;
+        `${data.lexeme} (${data.transliteration})`;
+
+      // Format definition with paragraphs
+      const formattedDefinition = data.definition
+        .split("\n\n")
+        .map((p) => `<p>${p}</p>`)
+        .join("");
+
       document.getElementById("word-definition").innerHTML = `
-        <p>To see the Strong's concordance information, please check Blue Letter Bible directly.</p>
-        <p>A full integration requires a server-side component to bypass browser security (CORS) or a public API key for Blue Letter Bible, which is not currently available.</p>
-        <p>
-            <a href="${searchUrl}" target="_blank" rel="noopener noreferrer">
-                Search for "${wordText}" in ${book.name} ${chapter}:${verse} on Blue Letter Bible
-            </a>
-        </p>
-        <p style="word-break: break-all;"><small>URL: ${searchUrl}</small></p>
+        <p><strong>Strong's Number:</strong> ${data.strongsNumber}</p>
+        <div>${formattedDefinition}</div>
       `;
     } catch (error) {
-      console.error("Failed to create link for word definition:", error);
+      console.error("Failed to show word definition:", error);
       document.getElementById("original-word").textContent = "Error";
       document.getElementById("word-definition").textContent = error.message;
     }
