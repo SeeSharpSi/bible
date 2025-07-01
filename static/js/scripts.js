@@ -1,0 +1,633 @@
+document.addEventListener("DOMContentLoaded", () => {
+  // --- DOM Elements ---
+  const bibleContent = document.getElementById("bible-content");
+  const translationSelect = document.getElementById("translation-select");
+  const themeToggle = document.getElementById("theme-toggle");
+  const toggleNumbers = document.getElementById("toggle-numbers");
+  const bookSelect = document.getElementById("book-select");
+  const chapterSelect = document.getElementById("chapter-select");
+
+  const noteModal = document.getElementById("note-modal");
+  const wordModal = document.getElementById("word-modal");
+  const noteTextarea = document.getElementById("note-textarea");
+  const saveNoteBtn = document.getElementById("save-note");
+  const highlightBtn = document.getElementById("highlight-text");
+
+  // --- State ---
+  let currentSelection = null;
+  let currentState = {
+    // The API uses numeric book IDs. John is book 43.
+    bookId: 43,
+    chapter: 1,
+    translation: "NASB95",
+    books: [], // To store the list of books for the current translation
+  };
+
+  // --- API Base URL ---
+  const API_URL = "https://bolls.life";
+
+  // --- Functions ---
+
+  /**
+   * Fetches and displays Bible text based on the current state.
+   */
+  async function loadBibleText() {
+    const { translation, bookId, chapter } = currentState;
+
+    bibleContent.innerHTML = "<p>Loading...</p>";
+
+    try {
+      // Use get-chapter endpoint, which may provide more structured data
+      const response = await fetch(
+        `${API_URL}/get-chapter/${translation}/${bookId}/${chapter}/`,
+      );
+
+      if (!response.ok) {
+        let errorText = `API request failed: ${response.status} ${response.statusText}`;
+        // Try to get more specific error from API response body
+        try {
+          const errorData = await response.json();
+          if (errorData.detail) {
+            errorText = errorData.detail;
+          }
+        } catch (e) {
+          // Body was not JSON or empty, stick with the status text
+        }
+        throw new Error(errorText);
+      }
+
+      const verses = await response.json();
+
+      if (Array.isArray(verses)) {
+        renderBibleText(verses);
+        reapplyAllHighlights(); // Re-apply after content is loaded.
+      } else {
+        throw new Error(
+          "API response was not in the expected format (an array of verses).",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load Bible text:", error);
+      bibleContent.innerHTML = `
+                <p><strong>Error loading Bible text.</strong></p>
+                <p>This may be because the selected translation ('${currentState.translation}') is not supported by the API.</p>
+                <p>Commonly available free translations are KJV, YLT, and WEB.</p>
+                <p><small>Details: ${error.message}</small></p>
+            `;
+    }
+  }
+
+  /**
+   * Renders the fetched Bible text into the content area.
+   * @param {Array} verses - The array of verse objects from the API.
+   */
+  function renderBibleText(verses) {
+    const { bookId, chapter } = currentState;
+    bibleContent.innerHTML = ""; // Clear previous content
+
+    verses.forEach((verseData) => {
+      const verseId = `verse-${bookId}-${chapter}-${verseData.verse}`;
+      const p = document.createElement("p");
+      p.id = verseId;
+      p.className = "verse"; // Add a class for styling
+
+      const verseNumSpan = document.createElement("span");
+      verseNumSpan.className = "verse-number";
+      verseNumSpan.textContent = `${verseData.verse}`;
+      p.appendChild(verseNumSpan);
+
+      const verseTextSpan = document.createElement("span");
+      verseTextSpan.className = "verse-text";
+
+      // Process the HTML from the API to make each word clickable
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = verseData.text;
+
+      function processNode(node) {
+        if (node.nodeType === 3) {
+          // Text node
+          const fragment = document.createDocumentFragment();
+          // Split by space to identify words
+          const words = node.textContent.split(/(\s+)/);
+          words.forEach((word) => {
+            if (word.trim().length > 0) {
+              const span = document.createElement("span");
+              span.className = "word";
+              span.textContent = word;
+              fragment.appendChild(span);
+            } else {
+              fragment.appendChild(document.createTextNode(word));
+            }
+          });
+          return fragment;
+        } else if (node.nodeType === 1) {
+          // Element node
+          const newNode = node.cloneNode(false);
+          for (const child of Array.from(node.childNodes)) {
+            newNode.appendChild(processNode(child));
+          }
+          return newNode;
+        }
+        return node.cloneNode(true);
+      }
+
+      for (const child of Array.from(tempDiv.childNodes)) {
+        verseTextSpan.appendChild(processNode(child));
+      }
+      p.appendChild(verseTextSpan);
+
+      bibleContent.appendChild(p);
+    });
+  }
+
+  async function loadBooks() {
+    currentState.translation = translationSelect.value.toUpperCase();
+    bookSelect.disabled = true;
+    chapterSelect.disabled = true;
+    bookSelect.innerHTML = "<option>Loading books...</option>";
+
+    try {
+      const response = await fetch(
+        `${API_URL}/get-books/${currentState.translation}/`,
+      );
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+      const books = await response.json();
+      currentState.books = books;
+
+      bookSelect.innerHTML = "";
+      books.forEach((book) => {
+        const option = document.createElement("option");
+        option.value = book.bookid;
+        option.textContent = book.name;
+        bookSelect.appendChild(option);
+      });
+
+      // Set book to John (43) or the first book if not found
+      const defaultBookId = 43;
+      const defaultBookExists = books.some((b) => b.bookid === defaultBookId);
+      currentState.bookId = defaultBookExists ? defaultBookId : books[0].bookid;
+      bookSelect.value = currentState.bookId;
+
+      bookSelect.disabled = false;
+      populateChapterSelect();
+    } catch (error) {
+      console.error("Failed to load books:", error);
+      bookSelect.innerHTML = `<option>Error loading</option>`;
+      bibleContent.innerHTML = `<p><strong>Could not load book list for ${currentState.translation}.</strong></p>`;
+    }
+  }
+
+  function populateChapterSelect() {
+    const selectedBook = currentState.books.find(
+      (b) => b.bookid == bookSelect.value, // Use == for loose comparison as value is string
+    );
+    if (!selectedBook) return;
+
+    chapterSelect.innerHTML = "";
+    for (let i = 1; i <= selectedBook.chapters; i++) {
+      const option = document.createElement("option");
+      option.value = i;
+      option.textContent = i;
+      chapterSelect.appendChild(option);
+    }
+
+    currentState.bookId = selectedBook.bookid;
+    currentState.chapter = 1;
+    chapterSelect.value = 1;
+
+    chapterSelect.disabled = false;
+    loadBibleText();
+  }
+
+  /**
+   * Toggles the theme between light and dark mode.
+   */
+  function toggleTheme() {
+    document.body.classList.toggle("dark-mode");
+    localStorage.setItem(
+      "darkMode",
+      document.body.classList.contains("dark-mode"),
+    );
+  }
+
+  /**
+   * Applies the saved theme from localStorage on page load.
+   */
+  function applySavedTheme() {
+    if (localStorage.getItem("darkMode") === "true") {
+      document.body.classList.add("dark-mode");
+    }
+  }
+
+  /**
+   * Toggles the visibility of verse numbers.
+   */
+  function toggleVerseNumbers() {
+    document.body.classList.toggle(
+      "hide-verse-numbers",
+      !toggleNumbers.checked,
+    );
+  }
+
+  /**
+   * Handles text selection for notes and highlighting.
+   */
+  function handleTextSelection() {
+    const selection = window.getSelection();
+    if (selection.isCollapsed || selection.rangeCount === 0) return;
+
+    if (
+      bibleContent.contains(selection.anchorNode) &&
+      bibleContent.contains(selection.focusNode)
+    ) {
+      currentSelection = selection.getRangeAt(0).cloneRange();
+      noteModal.style.display = "flex";
+    }
+  }
+
+  // --- Highlighting and Notes ---
+
+  function getHighlightsForChapter() {
+    const key = `highlights-${currentState.translation}-${currentState.bookId}-${currentState.chapter}`;
+    return JSON.parse(localStorage.getItem(key)) || [];
+  }
+
+  function saveHighlightsForChapter(highlights) {
+    const key = `highlights-${currentState.translation}-${currentState.bookId}-${currentState.chapter}`;
+    localStorage.setItem(key, JSON.stringify(highlights));
+  }
+
+  function getRangeLocation(range) {
+    let p = range.startContainer;
+    while (p && p.nodeName !== "P") {
+      p = p.parentNode;
+    }
+    if (!p || !p.id.startsWith("verse-")) return null;
+
+    const verseId = p.id;
+    const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+    let charCount = 0;
+    let start = -1,
+      end = -1;
+    let node;
+
+    while ((node = walker.nextNode())) {
+      const nodeLength = node.textContent.length;
+      if (start === -1 && node === range.startContainer) {
+        start = charCount + range.startOffset;
+      }
+      if (end === -1 && node === range.endContainer) {
+        end = charCount + range.endOffset;
+        break;
+      }
+      charCount += nodeLength;
+    }
+
+    if (start !== -1 && end !== -1 && start < end) {
+      return { verseId, start, end };
+    }
+    return null;
+  }
+
+  function applyHighlightFromLocation(location) {
+    const p = document.getElementById(location.verseId);
+    if (!p) return;
+
+    const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+    let charCount = 0;
+    let startNode = null,
+      endNode = null;
+    let startOffset = 0,
+      endOffset = 0;
+    let node;
+
+    while ((node = walker.nextNode())) {
+      const nodeLength = node.textContent.length;
+      if (startNode === null && location.start < charCount + nodeLength) {
+        startNode = node;
+        startOffset = location.start - charCount;
+      }
+      if (endNode === null && location.end <= charCount + nodeLength) {
+        endNode = node;
+        endOffset = location.end - charCount;
+        break;
+      }
+      charCount += nodeLength;
+    }
+
+    if (startNode && endNode) {
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+
+      if (location.type === "note") {
+        // For notes, insert a symbol and wrap the text in a plain span for hover effects.
+        const noteSymbol = document.createElement("span");
+        noteSymbol.className = "note-symbol";
+        noteSymbol.textContent = "📝";
+        noteSymbol.dataset.highlightId = location.id;
+        noteSymbol.dataset.note = location.note;
+
+        const textSpan = document.createElement("span");
+        textSpan.id = `note-text-${location.id}`;
+
+        try {
+          textSpan.appendChild(range.extractContents());
+          range.insertNode(textSpan);
+          // Insert the symbol right before the text it refers to
+          textSpan.parentNode.insertBefore(noteSymbol, textSpan);
+        } catch (e) {
+          console.error("Failed to apply note from location", location, e);
+        }
+      } else {
+        // For highlights, wrap in a styled span.
+        const highlightSpan = document.createElement("span");
+        highlightSpan.className = "highlight-only";
+        highlightSpan.dataset.highlightId = location.id;
+
+        try {
+          // Using extractContents and insertNode is more robust than surroundContents
+          highlightSpan.appendChild(range.extractContents());
+          range.insertNode(highlightSpan);
+        } catch (e) {
+          console.error("Failed to apply highlight from location", location, e);
+        }
+      }
+    }
+  }
+
+  function reapplyAllHighlights() {
+    const highlights = getHighlightsForChapter();
+    highlights.forEach(applyHighlightFromLocation);
+  }
+
+  async function showWordDefinition(word) {
+    word = word.trim().replace(/[.,;:"?!()]$/g, ""); // Clean punctuation
+    if (!word) return;
+
+    // Use the BDBT dictionary (Brown-Driver-Briggs/Thayer) for Hebrew/Greek
+    const DICTIONARY = "BDBT";
+    const url = `${API_URL}/dictionary-definition/${DICTIONARY}/${encodeURIComponent(
+      word,
+    )}/`;
+
+    document.getElementById("original-word").textContent = "Loading...";
+    document.getElementById("word-definition").innerHTML = "";
+    wordModal.style.display = "flex";
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API returned status ${response.status}`);
+      }
+      const data = await response.json();
+
+      if (data && data.length > 0) {
+        // Display the first result
+        const def = data[0];
+        document.getElementById("original-word").textContent =
+          `${def.lexeme} (${def.topic})`;
+        document.getElementById("word-definition").innerHTML = def.definition;
+      } else {
+        document.getElementById("original-word").textContent =
+          `No definition found for "${word}"`;
+        document.getElementById("word-definition").innerHTML =
+          `The API did not return a definition. This could be because it's a common word (e.g., "the"), a proper noun, or a variant form.`;
+      }
+    } catch (error) {
+      console.error("Failed to fetch word definition:", error);
+      document.getElementById("original-word").textContent = "Error";
+      document.getElementById("word-definition").textContent = error.message;
+    }
+  }
+
+  function addNewHighlight(type) {
+    if (!currentSelection) return;
+
+    const location = getRangeLocation(currentSelection);
+    if (!location) {
+      alert("Could not save highlight. The selection may be invalid or empty.");
+      closeAllModals();
+      return;
+    }
+
+    const highlights = getHighlightsForChapter();
+    const newHighlight = {
+      id: `h-${Date.now()}`,
+      type: type, // 'highlight-only' or 'note'
+      ...location,
+    };
+
+    if (type === "note") {
+      const noteText = noteTextarea.value.trim();
+      if (!noteText) {
+        alert("Please enter a note before saving.");
+        return;
+      }
+      newHighlight.note = noteText;
+    }
+
+    highlights.push(newHighlight);
+    saveHighlightsForChapter(highlights);
+    applyHighlightFromLocation(newHighlight); // Apply to DOM immediately
+    closeAllModals();
+  }
+
+  function removeHighlight(id) {
+    let highlights = getHighlightsForChapter();
+    const toRemove = highlights.find((h) => h.id === id);
+    if (!toRemove) return;
+
+    highlights = highlights.filter((h) => h.id !== id);
+    saveHighlightsForChapter(highlights);
+
+    if (toRemove.type === "note") {
+      const symbol = document.querySelector(
+        `.note-symbol[data-highlight-id="${id}"]`,
+      );
+      if (symbol) symbol.remove();
+
+      const textSpan = document.getElementById(`note-text-${id}`);
+      if (textSpan) {
+        // Unwrap the content of the span
+        const parent = textSpan.parentNode;
+        while (textSpan.firstChild) {
+          parent.insertBefore(textSpan.firstChild, textSpan);
+        }
+        parent.removeChild(textSpan);
+      }
+    } else {
+      // This is for .highlight-only
+      const el = document.querySelector(
+        `.highlight-only[data-highlight-id="${id}"]`,
+      );
+      if (el) {
+        const parent = el.parentNode;
+        while (el.firstChild) {
+          parent.insertBefore(el.firstChild, el);
+        }
+        parent.removeChild(el);
+      }
+    }
+  }
+
+  function showActionMenu(element) {
+    closeAllModals();
+
+    const id = element.dataset.highlightId;
+    const isNote = element.classList.contains("note-symbol");
+
+    const menu = document.createElement("div");
+    menu.id = "highlight-action-menu";
+    menu.className = "modal-content";
+    menu.style.position = "absolute";
+
+    const rect = element.getBoundingClientRect();
+    menu.style.top = `${window.scrollY + rect.bottom + 5}px`;
+    menu.style.left = `${window.scrollX + rect.left}px`;
+    menu.style.width = "auto";
+    menu.style.maxWidth = "250px";
+    menu.style.zIndex = "3000";
+
+    if (isNote) {
+      const note = element.dataset.note;
+      const p = document.createElement("p");
+      p.style.whiteSpace = "pre-wrap";
+      p.style.marginTop = "0";
+      p.innerHTML = `<strong>Note:</strong> ${note}`;
+      menu.appendChild(p);
+    }
+
+    const buttonContainer = document.createElement("div");
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = isNote ? "Delete Note" : "Remove Highlight";
+    removeBtn.onclick = () => {
+      removeHighlight(id);
+      closeAllModals();
+    };
+
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "Close";
+    closeBtn.style.marginLeft = "10px";
+    closeBtn.onclick = closeAllModals;
+
+    buttonContainer.appendChild(removeBtn);
+    buttonContainer.appendChild(closeBtn);
+    menu.appendChild(buttonContainer);
+
+    document.body.appendChild(menu);
+  }
+
+  /**
+   * Closes all open modals.
+   */
+  function closeAllModals() {
+    document
+      .querySelectorAll(".modal")
+      .forEach((modal) => (modal.style.display = "none"));
+
+    const actionMenu = document.getElementById("highlight-action-menu");
+    if (actionMenu) {
+      actionMenu.remove();
+    }
+
+    currentSelection = null;
+    noteTextarea.value = "";
+  }
+
+  // --- Event Listeners ---
+
+  themeToggle.addEventListener("click", toggleTheme);
+  toggleNumbers.addEventListener("change", toggleVerseNumbers);
+  translationSelect.addEventListener("change", loadBooks);
+
+  bookSelect.addEventListener("change", () => {
+    currentState.bookId = parseInt(bookSelect.value, 10);
+    populateChapterSelect();
+  });
+
+  chapterSelect.addEventListener("change", () => {
+    currentState.chapter = parseInt(chapterSelect.value, 10);
+    loadBibleText();
+  });
+  translationSelect.addEventListener("change", loadBibleText);
+
+  // NOTE: Word-level click functionality is not implemented because the `get-text`
+  // API endpoint does not provide the necessary Strong's numbers for definitions.
+
+  bibleContent.addEventListener("mouseover", (e) => {
+    if (e.target.classList.contains("note-symbol")) {
+      const id = e.target.dataset.highlightId;
+      const textSpan = document.getElementById(`note-text-${id}`);
+      if (textSpan) {
+        textSpan.classList.add("note-hover-highlight");
+      }
+    }
+  });
+
+  bibleContent.addEventListener("mouseout", (e) => {
+    if (e.target.classList.contains("note-symbol")) {
+      const id = e.target.dataset.highlightId;
+      const textSpan = document.getElementById(`note-text-${id}`);
+      if (textSpan) {
+        textSpan.classList.remove("note-hover-highlight");
+      }
+    }
+  });
+
+  bibleContent.addEventListener("click", (e) => {
+    // Word click should be first priority
+    if (e.target.classList.contains("word")) {
+      showWordDefinition(e.target.textContent);
+      return;
+    }
+
+    // Check for clicks on our custom elements
+    const noteSymbol = e.target.closest(".note-symbol");
+    if (noteSymbol) {
+      e.stopPropagation();
+      showActionMenu(noteSymbol);
+      return;
+    }
+    const highlightEl = e.target.closest(".highlight-only");
+    if (highlightEl) {
+      e.stopPropagation();
+      showActionMenu(highlightEl);
+      return;
+    }
+  });
+
+  bibleContent.addEventListener("mouseup", (e) => {
+    // Avoid triggering selection when clicking on our custom elements
+    if (
+      e.target.closest(".note-symbol") ||
+      e.target.closest(".highlight-only")
+    ) {
+      return;
+    }
+    handleTextSelection();
+  });
+
+  // Modal functionality
+  highlightBtn.addEventListener("click", () =>
+    addNewHighlight("highlight-only"),
+  );
+  saveNoteBtn.addEventListener("click", () => addNewHighlight("note"));
+
+  document.querySelectorAll(".close-button").forEach((btn) => {
+    btn.addEventListener("click", closeAllModals);
+  });
+
+  window.addEventListener("click", (e) => {
+    if (e.target.classList.contains("modal")) {
+      closeAllModals();
+    }
+  });
+
+  // --- Initialization ---
+  applySavedTheme();
+  toggleVerseNumbers();
+  loadBooks();
+});

@@ -1,0 +1,269 @@
+/* General Body Styles */
+body {
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+        sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f4;
+    color: #333;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
+}
+
+/* Dark Mode */
+body.dark-mode {
+    background-color: #121212;
+    color: #e0e0e0;
+}
+
+body.dark-mode a {
+    color: #bb86fc;
+}
+
+body.dark-mode .modal-content {
+    background-color: #333;
+    color: #e0e0e0;
+}
+
+/* Header */
+header {
+    background: #fff;
+    padding: 1rem;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+body.dark-mode header {
+    background: #1e1e1e;
+    border-bottom: 1px solid #444;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+/* Header Controls */
+.controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+select,
+button,
+input[type="checkbox"] {
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #fff;
+}
+
+body.dark-mode select,
+body.dark-mode button {
+    background-color: #333;
+    color: #e0e0e0;
+    border-color: #555;
+}
+
+button {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+button:hover {
+    background-color: #e0e0e0;
+}
+
+body.dark-mode button:hover {
+    background-color: #555;
+}
+
+/* Main Content */
+main {
+    padding: 1rem 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Verse and Chapter Styles */
+.verse {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5em; /* Space between number and text */
+}
+
+.verse-number {
+    font-weight: bold;
+    font-size: 0.75em;
+    padding-top: 0.2em; /* Helps align number with top of text */
+    color: #888;
+    flex-shrink: 0; /* Prevents number from being squished */
+}
+
+.verse-text {
+    flex: 1; /* Allows text to take remaining space and wrap correctly */
+}
+
+body.dark-mode .verse-number {
+    color: #aaa;
+}
+
+.chapter-number {
+    font-weight: bold;
+    font-size: 2em;
+    display: inline;
+}
+
+/* Hide numbers if toggled */
+body.hide-verse-numbers .verse-number,
+body.hide-verse-numbers .chapter-number {
+    display: none;
+}
+
+/* Clickable words */
+.word {
+    cursor: pointer;
+}
+.word:hover {
+    text-decoration: underline;
+    color: #007bff;
+}
+
+body.dark-mode .word:hover {
+    color: #bb86fc;
+}
+
+/* Note-taking & Highlighting */
+.highlight-only {
+    background-color: #fafa98; /* A lighter yellow */
+    cursor: pointer;
+}
+
+.note-hover-highlight {
+    background-color: #d4edda; /* Light green for hover */
+    transition: background-color 0.2s;
+}
+
+.note-symbol {
+    cursor: pointer;
+    font-size: 0.8em;
+    padding: 0 5px;
+    border-radius: 4px;
+    user-select: none; /* Prevents selecting the emoji text */
+}
+.note-symbol:hover {
+    background-color: #e2e6ea;
+}
+
+body.dark-mode .highlight-only {
+    background-color: #b388ff; /* A lavender for dark mode highlights */
+    color: #121212;
+}
+
+body.dark-mode .note-hover-highlight {
+    background-color: #2e4b34; /* Dark green for hover */
+}
+
+body.dark-mode .note-symbol:hover {
+    background-color: #495057;
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background-color: #fff;
+    padding: 20px;
+    border: 1px solid #888;
+    border-radius: 5px;
+    width: 80%;
+    max-width: 500px;
+    position: relative;
+}
+
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+#note-textarea {
+    width: calc(100% - 20px);
+    height: 150px;
+    margin-bottom: 10px;
+    padding: 10px;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 1rem;
+    margin-top: 2rem;
+    font-size: 0.9rem;
+    color: #777;
+}
+
+body.dark-mode footer {
+    color: #aaa;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .controls {
+        flex-direction: column;
+        width: 100%;
+        align-items: stretch;
+    }
+
+    .control-group {
+        justify-content: space-between;
+    }
+
+    main {
+        padding: 1rem;
+    }
+}

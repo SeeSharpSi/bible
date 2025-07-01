@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Bible App</title>
+        <link rel="stylesheet" href="/static/css/styles.css" />
+    </head>
+    <body>
+        <header>
+            <h1>Bible Reader</h1>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="translation-select">Translation:</label>
+                    <select id="translation-select">
+                        <option value="nasb">NASB95</option>
+                        <option value="esv">ESV</option>
+                        <option value="WEB">WEB</option>
+                        <option value="niv">NIV</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="book-select">Book:</label>
+                    <select id="book-select" disabled>
+                        <option>Loading...</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="chapter-select">Chapter:</label>
+                    <select id="chapter-select" disabled></select>
+                </div>
+                <div class="control-group">
+                    <label for="toggle-numbers">Verse Numbers:</label>
+                    <input type="checkbox" id="toggle-numbers" checked />
+                </div>
+                <div class="control-group">
+                    <button id="theme-toggle">Toggle Dark Mode</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="bible-content">
+            <!-- Bible text will be loaded here -->
+        </main>
+
+        <div id="note-modal" class="modal" style="display: none">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <h2>Add Note</h2>
+                <textarea
+                    id="note-textarea"
+                    placeholder="Your notes..."
+                ></textarea>
+                <button id="save-note">Save Note</button>
+                <button id="highlight-text">Highlight</button>
+            </div>
+        </div>
+
+        <div id="word-modal" class="modal" style="display: none">
+            <div class="modal-content">
+                <span class="close-button">&times;</span>
+                <h2 id="original-word"></h2>
+                <p id="word-definition"></p>
+            </div>
+        </div>
+
+        <footer>
+            <p>
+                Powered by the
+                <a href="https://bolls.life/api/" target="_blank"
+                    >bolls.life API</a
+                >
+            </p>
+        </footer>
+
+        <script src="/static/js/scripts.js"></script>
+    </body>
+</html>
