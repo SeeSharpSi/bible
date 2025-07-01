@@ -249,16 +249,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Highlighting and Notes ---
 
-  function getHighlightsForChapter() {
-    const key = `highlights-${currentState.translation}-${currentState.bookId}-${currentState.chapter}`;
-    return JSON.parse(localStorage.getItem(key)) || [];
-  }
-
-  function saveHighlightsForChapter(highlights) {
-    const key = `highlights-${currentState.translation}-${currentState.bookId}-${currentState.chapter}`;
-    localStorage.setItem(key, JSON.stringify(highlights));
-  }
-
   function getRangeLocation(range) {
     let p = range.startContainer;
     while (p && p.nodeName !== "P") {
@@ -358,9 +348,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function reapplyAllHighlights() {
-    const highlights = getHighlightsForChapter();
-    highlights.forEach(applyHighlightFromLocation);
+  async function reapplyAllHighlights() {
+    const { translation, bookId, chapter } = currentState;
+    const url = `/api/highlights?translation=${translation}&bookId=${bookId}&chapter=${chapter}`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch highlights: ${response.statusText}`);
+      }
+      const highlights = await response.json();
+      if (highlights) {
+        highlights.forEach(applyHighlightFromLocation);
+      }
+    } catch (error) {
+      console.error("Could not load highlights:", error);
+    }
   }
 
   async function showWordDefinition(word) {
@@ -403,7 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function addNewHighlight(type) {
+  async function addNewHighlight(type) {
     if (!currentSelection) return;
 
     const location = getRangeLocation(currentSelection);
@@ -413,11 +416,15 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const highlights = getHighlightsForChapter();
+    const { translation, bookId, chapter } = currentState;
     const newHighlight = {
       id: `h-${Date.now()}`,
-      type: type, // 'highlight-only' or 'note'
+      type: type,
       ...location,
+      translation,
+      bookId,
+      chapter,
+      note: "",
     };
 
     if (type === "note") {
@@ -429,47 +436,66 @@ document.addEventListener("DOMContentLoaded", () => {
       newHighlight.note = noteText;
     }
 
-    highlights.push(newHighlight);
-    saveHighlightsForChapter(highlights);
-    applyHighlightFromLocation(newHighlight); // Apply to DOM immediately
-    closeAllModals();
+    try {
+      const response = await fetch("/api/highlights", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newHighlight),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to save highlight: ${response.statusText}`);
+      }
+
+      applyHighlightFromLocation(newHighlight); // Apply to DOM immediately
+      closeAllModals();
+    } catch (error) {
+      console.error("Could not save highlight:", error);
+      alert("There was a problem saving your highlight. Please try again.");
+    }
   }
 
-  function removeHighlight(id) {
-    let highlights = getHighlightsForChapter();
-    const toRemove = highlights.find((h) => h.id === id);
-    if (!toRemove) return;
+  async function removeHighlight(id) {
+    try {
+      const response = await fetch(`/api/highlights/delete/${id}`, {
+        method: "DELETE",
+      });
 
-    highlights = highlights.filter((h) => h.id !== id);
-    saveHighlightsForChapter(highlights);
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Failed to delete highlight: ${response.statusText}`);
+      }
 
-    if (toRemove.type === "note") {
-      const symbol = document.querySelector(
+      // If API call is successful, remove from DOM
+      const noteSymbol = document.querySelector(
         `.note-symbol[data-highlight-id="${id}"]`,
       );
-      if (symbol) symbol.remove();
-
-      const textSpan = document.getElementById(`note-text-${id}`);
-      if (textSpan) {
-        // Unwrap the content of the span
-        const parent = textSpan.parentNode;
-        while (textSpan.firstChild) {
-          parent.insertBefore(textSpan.firstChild, textSpan);
+      if (noteSymbol) {
+        const textSpan = document.getElementById(`note-text-${id}`);
+        if (textSpan) {
+          const parent = textSpan.parentNode;
+          while (textSpan.firstChild) {
+            parent.insertBefore(textSpan.firstChild, textSpan);
+          }
+          parent.removeChild(textSpan);
         }
-        parent.removeChild(textSpan);
-      }
-    } else {
-      // This is for .highlight-only
-      const el = document.querySelector(
-        `.highlight-only[data-highlight-id="${id}"]`,
-      );
-      if (el) {
-        const parent = el.parentNode;
-        while (el.firstChild) {
-          parent.insertBefore(el.firstChild, el);
+        noteSymbol.remove();
+      } else {
+        const highlightEl = document.querySelector(
+          `.highlight-only[data-highlight-id="${id}"]`,
+        );
+        if (highlightEl) {
+          const parent = highlightEl.parentNode;
+          while (highlightEl.firstChild) {
+            parent.insertBefore(highlightEl.firstChild, highlightEl);
+          }
+          parent.removeChild(highlightEl);
         }
-        parent.removeChild(el);
       }
+    } catch (error) {
+      console.error("Could not remove highlight:", error);
+      alert("There was a problem removing your highlight. Please try again.");
     }
   }
 
