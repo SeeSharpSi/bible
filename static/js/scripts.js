@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- API Base URL ---
   const API_URL = "https://bolls.life";
+  const BLB_URL = "https://www.blueletterbible.org";
 
   // --- Functions ---
 
@@ -366,41 +367,64 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function showWordDefinition(word) {
-    word = word.trim().replace(/[.,;:"?!()]$/g, ""); // Clean punctuation
-    if (!word) return;
+  /**
+   * Shows a link to the Strong's concordance definition on Blue Letter Bible.
+   * A direct API integration is not possible without a public API key from
+   * Blue Letter Bible or a server-side component to handle web scraping.
+   * This implementation constructs a search URL that takes the user directly
+   * to the relevant information on the BLB website.
+   * @param {HTMLElement} wordElement The clicked word span element.
+   */
+  async function showWordDefinition(wordElement) {
+    const wordText = wordElement.textContent
+      .trim()
+      .replace(/[.,;:"'?!()]$/g, "");
+    if (!wordText) return;
 
-    // Use the BDBT dictionary (Brown-Driver-Briggs/Thayer) for Hebrew/Greek
-    const DICTIONARY = "BDBT";
-    const url = `${API_URL}/dictionary-definition/${DICTIONARY}/${encodeURIComponent(
-      word,
-    )}/`;
+    const { translation } = currentState;
 
-    document.getElementById("original-word").textContent = "Loading...";
+    document.getElementById("original-word").textContent =
+      `Looking up "${wordText}"...`;
     document.getElementById("word-definition").innerHTML = "";
     wordModal.style.display = "flex";
 
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`API returned status ${response.status}`);
+      // Step 1: Find verse context from the element's parent
+      const verseEl = wordElement.closest(".verse");
+      if (!verseEl) {
+        throw new Error("Could not identify the verse context for the word.");
       }
-      const data = await response.json();
+      const [_, bookId, chapter, verse] = verseEl.id.split("-");
+      const book = currentState.books.find((b) => b.bookid == bookId);
+      if (!book) {
+        throw new Error(
+          "Could not resolve book information from current state.",
+        );
+      }
 
-      if (data && data.length > 0) {
-        // Display the first result
-        const def = data[0];
-        document.getElementById("original-word").textContent =
-          `${def.lexeme} (${def.topic})`;
-        document.getElementById("word-definition").innerHTML = def.definition;
-      } else {
-        document.getElementById("original-word").textContent =
-          `No definition found for "${word}"`;
-        document.getElementById("word-definition").innerHTML =
-          `The API did not return a definition. This could be because it's a common word (e.g., "the"), a proper noun, or a variant form.`;
-      }
+      // Step 2: Construct a search URL for Blue Letter Bible.
+      // This approach creates a URL to the interlinear view for the specific verse.
+      // Note: BLB book names can be specific (e.g., 'Jhn' for John). The book name
+      // from the bolls.life API might need mapping for best results.
+      const bookAbbr = book.name.replace(/\s/g, "+"); // e.g. "1 Samuel" -> "1+Samuel"
+      const verseRef = `${bookAbbr}+${chapter}:${verse}`;
+      const searchUrl = `${BLB_URL}/search/preSearch.cfm?Criteria=${encodeURIComponent(wordText)}&t=${translation}&ss=1&source=from_interlinear&fromverse=${verseRef}`;
+
+      // Step 3: Display a helpful message and a link in the modal.
+      document.getElementById("original-word").textContent =
+        `Definition for "${wordText}"`;
+      document.getElementById("word-definition").innerHTML = `
+        <p>To see the Strong's concordance information, please check Blue Letter Bible directly.</p>
+        <p>A full integration requires a server-side component to bypass browser security (CORS) or a public API key for Blue Letter Bible, which is not currently available.</p>
+        <p>
+            <a href="${searchUrl}" target="_blank" rel="noopener noreferrer">
+                Search for "${wordText}" in ${book.name} ${chapter}:${verse} on Blue Letter Bible
+            </a>
+        </p>
+        <p style="word-break: break-all;"><small>URL: ${searchUrl}</small></p>
+      `;
     } catch (error) {
-      console.error("Failed to fetch word definition:", error);
+      console.error("Failed to create link for word definition:", error);
       document.getElementById("original-word").textContent = "Error";
       document.getElementById("word-definition").textContent = error.message;
     }
@@ -578,10 +602,6 @@ document.addEventListener("DOMContentLoaded", () => {
     currentState.chapter = parseInt(chapterSelect.value, 10);
     loadBibleText();
   });
-  translationSelect.addEventListener("change", loadBibleText);
-
-  // NOTE: Word-level click functionality is not implemented because the `get-text`
-  // API endpoint does not provide the necessary Strong's numbers for definitions.
 
   bibleContent.addEventListener("mouseover", (e) => {
     if (e.target.classList.contains("note-symbol")) {
@@ -606,7 +626,7 @@ document.addEventListener("DOMContentLoaded", () => {
   bibleContent.addEventListener("click", (e) => {
     // Word click should be first priority
     if (e.target.classList.contains("word")) {
-      showWordDefinition(e.target.textContent);
+      showWordDefinition(e.target); // Pass the element to get context
       return;
     }
 
